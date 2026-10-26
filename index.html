@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1b1410">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Wobble Tower</title>
+<style>
+  /* ===== 기본 화면 설정 ===== */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1410; color: #f3e6d3;
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
+  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+
+  /* ===== 상단 점수판 / 버튼 ===== */
+  #hud { position: fixed; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top) + 12px) 14px 0;
+    display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; transition: opacity .3s; }
+  #hud.hidden { opacity: 0; }
+  .score { background: rgba(20,14,10,.55); backdrop-filter: blur(6px); border: 1px solid rgba(255,220,170,.15);
+    border-radius: 14px; padding: 8px 14px; line-height: 1.25; }
+  .score b { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .score small { display: block; opacity: .65; font-size: 12px; }
+  .btns { display: flex; gap: 8px; pointer-events: auto; }
+  .btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,220,170,.2);
+    background: rgba(20,14,10,.55); color: #f3e6d3; font-size: 20px; backdrop-filter: blur(6px); }
+  .btn:active { transform: scale(.92); }
+
+  /* UI를 숨겼을 때(영상 촬영용) 다시 켜는 작은 점 */
+  #showUi { position: fixed; right: 10px; top: calc(env(safe-area-inset-top) + 10px); width: 36px; height: 36px;
+    border-radius: 50%; border: none; background: rgba(255,255,255,.08); color: transparent; display: none; }
+
+  /* ===== 안내 문구 ===== */
+  #toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 28px); transform: translateX(-50%);
+    background: rgba(20,14,10,.7); border: 1px solid rgba(255,220,170,.15); padding: 10px 16px; border-radius: 999px;
+    font-size: 14px; opacity: 0; transition: opacity .35s; pointer-events: none; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+
+  /* ===== 로딩 / 게임오버 화면 ===== */
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; background: rgba(15,10,7,.72); backdrop-filter: blur(4px); text-align: center; padding: 24px; }
+  .overlay.off { display: none; }
+  .overlay h1 { margin: 0; font-size: 34px; }
+  .game-title { font-size: 52px !important; line-height: 1; letter-spacing: .06em; font-weight: 900; color: #f1c27d; text-shadow: 0 4px 0 #6b4318, 0 10px 24px rgba(0,0,0,.5); }
+  .tag { font-size: 16px; }
+  .overlay p { margin: 0; opacity: .8; line-height: 1.5; }
+  .coffee { color: #f3e6d3; font-size: 15px; padding: 10px 18px; border: 1px solid rgba(255,220,170,.35); border-radius: 999px; text-decoration: none; }
+  .coffee:active { transform: scale(.96); }
+  .adline { font-size: 13px; opacity: .6; margin-top: 10px; user-select: text; -webkit-user-select: text; }
+  .big { font-size: 56px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .cta { margin-top: 6px; padding: 14px 34px; border-radius: 999px; border: none; font-size: 18px; font-weight: 700;
+    background: linear-gradient(180deg, #f1c27d, #d79b4a); color: #2b1a0a; }
+  .cta:active { transform: scale(.96); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="hud">
+  <div class="score"><small>Blocks stacked</small><b id="score">0</b><small id="best">Best 0</small></div>
+  <div class="btns">
+    <button class="btn" id="btnHide" title="Hide buttons (for recording)">🎥</button>
+    <button class="btn" id="btnReset" title="Restart">🔄</button>
+  </div>
+</div>
+<button id="showUi" aria-label="Show buttons">·</button>
+<div id="toast"></div>
+
+<div class="overlay" id="loading">
+  <h1 class="game-title">WOBBLE<br>TOWER</h1>
+  <p class="tag">Pull a block. Stack it on top.<br>Don't let it fall.</p>
+  <p id="loadMsg">Loading physics…</p>
+  <button class="cta" id="btnPlay" style="display:none">PLAY</button>
+</div>
+
+<div class="overlay off" id="over">
+  <h1>It fell! 💥</h1>
+  <p>Blocks stacked</p>
+  <div class="big" id="finalScore">0</div>
+  <p id="finalBest"></p>
+  <button class="cta" id="btnAgain">Play again</button>
+  <a class="coffee" href="https://buymeacoffee.com/ujnam80" target="_blank" rel="noopener">☕ Enjoyed it? Buy me a coffee</a>
+  <p class="adline">Want your brand on these blocks?<br><b>skadnrwhd@gmail.com</b></p>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import RAPIER from 'https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.21.0/dist/rapier.mjs';
+
+/* =====================================================================
+   젠가 (혼자 하기) — Three.js(화면) + Rapier(물리)
+   - 단위: 블록 폭 1 = 약 2.5cm. 블록 크기 3 x 0.6 x 1
+   - 물리값(마찰 0.3, 중력 50, 당기는 힘 상한 400)은 시뮬레이션으로 미리 튜닝한 값
+   ===================================================================== */
+
+// ---------- 설정값 ----------
+const BW = 1, BH = 0.6, BL = 3;      // 블록 폭(width) / 높이(height) / 길이(length)
+const GAP = 0.03;                    // 블록 사이 아주 작은 틈
+const LAYERS = 18;                   // 시작 층 수
+const GRAVITY = 50;                  // 중력 (실물처럼 보이는 속도로 맞춘 값)
+const FRICTION = 0.22;               // 나무 마찰
+const DT = 1 / 120;                  // 물리 계산 간격 (1/120초 — 쌓기 안정성)
+const PULL_K = 300;                  // 손가락 쪽으로 끌어당기는 스프링 세기
+const PULL_C = 30;                   // 끌 때 흔들림을 잡아주는 감쇠
+const PULL_MAX = 520;                // 손가락이 낼 수 있는 힘의 상한 (가속도 기준)
+
+// ---------- 화면 요소 ----------
+const $ = (id) => document.getElementById(id);
+const hud = $('hud'), scoreEl = $('score'), bestEl = $('best'), toastEl = $('toast');
+
+function toast(msg, ms = 2600) {
+  toastEl.textContent = msg; toastEl.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+
+// ---------- 최고 기록 (저장소가 막힌 환경에서도 에러 나지 않게 try/catch) ----------
+let best = 0;
+try { best = parseInt(localStorage.getItem('jenga_best') || '0', 10) || 0; } catch (e) {}
+function saveBest() { try { localStorage.setItem('jenga_best', String(best)); } catch (e) {} }
+
+// ---------- 물리엔진 시작 ----------
+try { await RAPIER.init(); }
+catch (e) { $('loadMsg').textContent = 'Could not load the physics engine. Check your connection and reload.'; throw e; }
+
+// ---------- 3D 장면 기본 세팅 ----------
+const BG = 0x1b1410;
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.prepend(renderer.domElement);
+const canvas = renderer.domElement;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BG);
+scene.fog = new THREE.Fog(BG, 30, 70);
+
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+
+// 조명: 은은한 하늘빛 + 그림자 만드는 주 조명
+scene.add(new THREE.HemisphereLight(0xfff0dc, 0x2a1d14, 0.75));
+const sun = new THREE.DirectionalLight(0xfff2e0, 2.4);
+sun.position.set(9, 20, 7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -15, right: 15, top: 15, bottom: -15, near: 1, far: 60 });
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.03;
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0xffc88a, 0.7);   // 뒤쪽 포인트 조명(영상 분위기용)
+rim.position.set(-10, 8, -9);
+scene.add(rim);
+
+// ---------- 나무 질감을 코드로 그리기 ----------
+function makeWoodTexture(base, seed, w = 512, h = 128, dark = false, label = null) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, w, h);
+  let s = seed; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 300; i++) {                      // 결(나뭇결) 선들
+    const y = r() * h, a = 0.04 + r() * 0.13;
+    g.strokeStyle = r() < 0.55 ? `rgba(80,45,15,${a})` : `rgba(255,232,190,${a * (dark ? 0.5 : 1)})`;
+    g.lineWidth = 0.5 + r() * 1.7;
+    g.beginPath(); g.moveTo(0, y);
+    const ph = r() * 6, amp = 0.8 + r() * 2;
+    for (let x = 0; x <= w; x += 24) g.lineTo(x, y + Math.sin(x * 0.015 + ph) * amp + (r() - 0.5) * 0.7);
+    g.stroke();
+  }
+  for (let k = 0; k < 2; k++) {                        // 옹이(점 같은 무늬) 몇 개
+    if (r() < 0.45) continue;
+    const x = r() * w, y = 18 + r() * (h - 36);
+    for (let q = 4; q > 0; q--) {
+      g.strokeStyle = `rgba(70,38,12,${0.1 + q * 0.04})`; g.lineWidth = 1.2;
+      g.beginPath(); g.ellipse(x, y, q * 7, q * 2.6, 0, 0, Math.PI * 2); g.stroke();
+    }
+  }
+  if (label) {                                         // 광고 문구를 나무에 낙인처럼 새김
+    g.save();
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(70,36,10,0.78)';
+    const fit = (txt, px, weight, face) => {          // 글씨가 질감 폭을 넘으면 자동으로 작게
+      let s = px; g.font = `${weight} ${s}px ${face}`;
+      while (g.measureText(txt).width > w * 0.92 && s > 12) { s -= 1; g.font = `${weight} ${s}px ${face}`; }
+    };
+    g.fillStyle = 'rgba(70,36,10,0.8)';
+    fit(label[0], 44, 800, '"Arial Black", Arial, sans-serif');
+    g.fillText(label[0], w / 2, h * 0.36);
+    g.fillStyle = 'rgba(70,36,10,0.75)';
+    fit(label[1], 29, 700, 'Arial, sans-serif');           // 메일 줄을 크게
+    g.fillText(label[1], w / 2, h * 0.74);
+    g.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+const blockTextures = [
+  makeWoodTexture('#d9a869', 11), makeWoodTexture('#cf9c5c', 23), makeWoodTexture('#e0b274', 37),
+];
+// 광고주를 찾는 영어 문구 (문구를 바꾸고 싶으면 여기만 고치면 돼요)
+const AD_EMAIL = 'skadnrwhd@gmail.com';       // 광고 문의 메일
+const AD_LABELS = [
+  ['YOUR AD HERE', 'SPONSORS: ' + AD_EMAIL],
+  ['ADVERTISE WITH US', 'SPONSORS: ' + AD_EMAIL],
+  ['YOUR LOGO HERE', 'SPONSORS: ' + AD_EMAIL],
+  ['AD SPACE AVAILABLE', 'SPONSORS: ' + AD_EMAIL],
+  ['SPONSOR THIS BLOCK', 'SPONSORS: ' + AD_EMAIL],
+];
+const adTextures = AD_LABELS.map((l, i) => makeWoodTexture(['#d9a869', '#cf9c5c', '#e0b274'][i % 3], 101 + i * 13, 512, 128, false, l));
+const tableTex = makeWoodTexture('#5a3b24', 91, 1024, 256, true);
+tableTex.wrapS = tableTex.wrapT = THREE.RepeatWrapping; tableTex.repeat.set(6, 6);
+
+// 바닥(테이블)
+const table = new THREE.Mesh(
+  new THREE.CircleGeometry(34, 64).rotateX(-Math.PI / 2),
+  new THREE.MeshStandardMaterial({ map: tableTex, roughness: 0.75, metalness: 0 })
+);
+table.receiveShadow = true;
+scene.add(table);
+
+// ---------- 게임 상태 ----------
+let world = null;                 // 물리 세계
+let blocks = [];                  // { rb, mesh } 목록
+let layerCount = [];              // 층별 남은 블록 수
+let layerSlots = [];              // 층별 자리(0,1,2) 사용 여부
+let score = 0;
+let state = 'loading';            // loading | play | collapsing | over
+let timeScale = 1;                // 1 = 보통, 0.25 = 슬로모션
+let drag = null;                  // 지금 끌고 있는 블록 정보
+let stacking = null;              // 맨 위로 쌓는 중인 블록 애니메이션
+let collapseAt = 0;               // 무너진 시각(슬로모션 타이머용)
+
+const raycaster = new THREE.Raycaster();
+const tmpV = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpV2 = new THREE.Vector3();
+
+const layerY = (l) => BH / 2 + l * BH;          // 층 번호 → 블록 중심 높이
+const layerQuat = (l) => (l % 2 === 0)
+  ? { x: 0, y: 0, z: 0, w: 1 }
+  : { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 };   // 홀수 층은 90도 돌려서 쌓기
+const slotPos = (l, slot) => {                  // 층 번호 + 자리 → 블록 위치(x,z)
+  const off = (slot - 1) * (BW + GAP);
+  return (l % 2 === 0) ? { x: 0, z: off } : { x: off, z: 0 };
+};
+
+// ---------- 새 게임 시작 (탑 쌓기) ----------
+function disposeGame() {
+  for (const b of blocks) {
+    scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose();
+  }
+  blocks = [];
+  if (world) { world.free(); world = null; }
+}
+
+function newGame() {
+  disposeGame();
+  drag = null; stacking = null; timeScale = 1; score = 0;
+  scoreEl.textContent = '0'; bestEl.textContent = 'Best ' + best;
+
+  world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
+  world.timestep = DT;
+  world.integrationParameters.numSolverIterations = 8;
+  // 바닥 충돌체
+  world.createCollider(RAPIER.ColliderDesc.cuboid(40, 0.5, 40).setTranslation(0, -0.5, 0)
+    .setFriction(FRICTION).setRestitution(0));
+
+  layerCount = []; layerSlots = [];
+  let seed = (Math.random() * 1e6 | 0) + 1;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  for (let i = 0; i < LAYERS; i++) {
+    layerCount[i] = 3; layerSlots[i] = [true, true, true];
+    for (let j = 0; j < 3; j++) {
+      // 블록 높이를 아주 조금씩 다르게(최대 2%) → 어떤 블록은 헐겁고 어떤 블록은 꽉 끼는 실물 느낌
+      const h = BH * (1 - rnd() * 0.02);
+      const p = slotPos(i, j), q = layerQuat(i);
+      const rb = world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic()
+          .setTranslation(p.x, layerY(i), p.z).setRotation(q)
+          .setLinearDamping(0.05).setAngularDamping(0.2).setCanSleep(false));
+      world.createCollider(
+        RAPIER.ColliderDesc.cuboid(BL / 2, h / 2, BW / 2).setFriction(FRICTION).setRestitution(0).setDensity(1), rb);
+      rb.layer = i; rb.slot = j;
+
+      const mat = new THREE.MeshStandardMaterial({
+        map: (rnd() < 0.5) ? adTextures[(rnd() * adTextures.length) | 0] : blockTextures[(rnd() * blockTextures.length) | 0], roughness: 0.62, metalness: 0,
+        color: new THREE.Color().setHSL(0.09 + (rnd() - 0.5) * 0.02, 0.35 + rnd() * 0.15, 0.78 + rnd() * 0.12),
+      });
+      const mesh = new THREE.Mesh(new RoundedBoxGeometry(BL, h, BW, 3, 0.05), mat);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.userData.rb = rb;
+      scene.add(mesh);
+      blocks.push({ rb, mesh });
+    }
+  }
+  // 처음 몇 초는 보이지 않게 미리 돌려서 탑을 안정시킴
+  for (let i = 0; i < 120; i++) world.step();
+  syncMeshes();
+  state = 'play';
+  $('over').classList.add('off');
+  toast('Drag a block out slowly. Rush it and the tower falls.');
+}
+
+function syncMeshes() {                 // 물리 계산 결과를 화면 블록에 반영
+  for (const b of blocks) {
+    const t = b.rb.translation(), r = b.rb.rotation();
+    b.mesh.position.set(t.x, t.y, t.z);
+    b.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+  }
+}
+
+// ---------- 규칙 계산 ----------
+function topCompleteLayer() {           // 3개가 다 있는 가장 높은 층
+  for (let i = layerCount.length - 1; i >= 0; i--) if (layerCount[i] === 3) return i;
+  return 0;
+}
+function canTake(rb) {                  // 맨 위 완성 층(과 그 위)은 뺄 수 없음
+  return rb.layer < topCompleteLayer() && !(stacking && stacking.b.rb === rb);
+}
+const isOut = (p) => Math.max(Math.abs(p.x), Math.abs(p.z)) > 3.05;   // 탑 밖으로 완전히 빠졌는가
+
+// ---------- 소리 (간단히 합성) ----------
+let audio = null;
+function initAudio() {
+  if (audio) { if (audio.state === 'suspended') audio.resume(); return; }
+  try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+}
+function thud(vol = 0.5, freq = 140, len = 0.18) {
+  if (!audio) return;
+  try {
+    const t0 = audio.currentTime;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(freq, t0); o.frequency.exponentialRampToValueAtTime(freq * 0.45, t0 + len);
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + len);
+    o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + len + 0.02);
+    // 나무 부딪히는 '딱' 소리용 짧은 잡음
+    const n = audio.createBufferSource(), buf = audio.createBuffer(1, audio.sampleRate * 0.06, audio.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    n.buffer = buf; const ng = audio.createGain(); ng.gain.value = vol * 0.35;
+    n.connect(ng).connect(audio.destination); n.start(t0);
+  } catch (e) {}
+}
+
+// ---------- 카메라 (손가락으로 돌리기) ----------
+const cam = { theta: 0.7, phi: 1.12, radius: 24, targetY: 5, minR: 9, maxR: 44 };
+function fitCamera() {
+  const w = window.innerWidth, h = window.innerHeight, a = w / h;
+  renderer.setSize(w, h, false);
+  camera.aspect = a; camera.updateProjectionMatrix();
+  cam.radius = Math.max(cam.minR, Math.min(cam.maxR, a < 1 ? 27 : 22));   // 세로 화면이면 조금 멀리
+}
+function updateCamera(dt) {
+  const topY = layerY(Math.max(topCompleteLayer(), 6)) + BH;
+  const wantY = Math.max(3.2, topY * 0.46);
+  cam.targetY += (wantY - cam.targetY) * Math.min(1, dt * 2);
+  const sp = Math.sin(cam.phi), cp = Math.cos(cam.phi);
+  camera.position.set(
+    cam.radius * sp * Math.sin(cam.theta), cam.targetY + cam.radius * cp, cam.radius * sp * Math.cos(cam.theta));
+  camera.lookAt(0, cam.targetY, 0);
+}
+window.addEventListener('resize', fitCamera);
+
+// ---------- 터치/마우스 조작 ----------
+const pointers = new Map();     // 현재 화면을 누르고 있는 손가락들
+let pinchDist = 0;
+
+function setRay(x, y) {
+  const r = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  initAudio();
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (pointers.size === 2) {                    // 두 손가락 → 확대/축소
+    const [a, b] = [...pointers.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    if (drag) releaseDrag(false);
+    return;
+  }
+  if (pointers.size > 2 || state !== 'play') return;
+
+  // 블록을 눌렀는지 확인
+  setRay(e.clientX, e.clientY);
+  const hit = raycaster.intersectObjects(blocks.map((b) => b.mesh), false)[0];
+  if (hit) {
+    const rb = hit.object.userData.rb;
+    if (!canTake(rb)) { toast("You can't pull from the top layers"); return; }
+    // 눌린 지점을 블록 기준 좌표로 저장 (블록이 돌아가도 같은 곳을 잡고 있게)
+    const t = rb.translation(), r = rb.rotation();
+    const inv = new THREE.Quaternion(r.x, r.y, r.z, r.w).invert();
+    const local = hit.point.clone().sub(new THREE.Vector3(t.x, t.y, t.z)).applyQuaternion(inv);
+    // 카메라를 바라보는 평면 위에서 손가락을 움직임
+    const normal = camera.getWorldDirection(new THREE.Vector3());
+    drag = { rb, mesh: hit.object, local, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.point),
+             target: hit.point.clone(), id: e.pointerId };
+    rb.setAngularDamping(1.5);                  // 잡고 있는 동안 너무 빙글 돌지 않게
+    hit.object.material.emissive.setHex(0x3a2208);
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchDist > 0) cam.radius = Math.max(cam.minR, Math.min(cam.maxR, cam.radius * (pinchDist / d)));
+    pinchDist = d; return;
+  }
+  if (drag && drag.id === e.pointerId) {        // 블록 끌기: 손가락 위치를 평면 위 목표점으로 변환
+    setRay(e.clientX, e.clientY);
+    if (raycaster.ray.intersectPlane(drag.plane, tmpV)) drag.target.copy(tmpV);
+  } else if (!drag && pointers.size === 1) {    // 빈 곳 드래그: 카메라 회전
+    cam.theta -= dx * 0.008;
+    cam.phi = Math.max(0.25, Math.min(1.5, cam.phi - dy * 0.006));
+  }
+});
+
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  pinchDist = 0;
+  if (drag && drag.id === e.pointerId) releaseDrag(true);
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  cam.radius = Math.max(cam.minR, Math.min(cam.maxR, cam.radius * (1 + e.deltaY * 0.001)));
+}, { passive: false });
+
+function releaseDrag(allowStack) {
+  if (!drag) return;
+  const { rb, mesh } = drag;
+  rb.resetForces(true);
+  rb.setAngularDamping(0.2);
+  mesh.material.emissive.setHex(0x000000);
+  drag = null;
+  // 탑 밖으로 완전히 빼서 놓았다면 → 맨 위로 올려 쌓기
+  if (allowStack && state === 'play' && isOut(rb.translation())) startStacking(rb);
+}
+
+// ---------- 손가락이 블록을 끄는 힘 (스프링 + 감쇠) ----------
+function applyDragForce() {
+  if (!drag) return;
+  const { rb, local, target } = drag;
+  const t = rb.translation(), r = rb.rotation(), v = rb.linvel(), m = rb.mass();
+  // 지금 잡고 있는 점의 실제 위치
+  tmpV2.copy(local).applyQuaternion(tmpQ.set(r.x, r.y, r.z, r.w)).add(tmpV.set(t.x, t.y, t.z));
+  let fx = (target.x - tmpV2.x) * PULL_K - v.x * PULL_C;
+  let fy = (target.y - tmpV2.y) * PULL_K - v.y * PULL_C;
+  let fz = (target.z - tmpV2.z) * PULL_K - v.z * PULL_C;
+  const mag = Math.hypot(fx, fy, fz);
+  if (mag > PULL_MAX) { const k = PULL_MAX / mag; fx *= k; fy *= k; fz *= k; }   // 사람 손의 힘 한계
+  rb.resetForces(true);
+  rb.addForce({ x: fx * m, y: fy * m, z: fz * m }, true);
+}
+
+// ---------- 뺀 블록을 맨 위에 쌓기 ----------
+function startStacking(rb) {
+  const b = blocks.find((x) => x.rb === rb);
+  layerCount[rb.layer]--; layerSlots[rb.layer][rb.slot] = false;
+
+  // 맨 위 층 찾기: 비어 있는 자리가 있으면 거기, 꽉 찼으면 새 층
+  let top = layerCount.length - 1;
+  while (top > 0 && layerCount[top] === 0) top--;
+  let L = top, slot = layerSlots[top] ? layerSlots[top].indexOf(false) : -1;
+  if (layerCount[top] === 3 || slot === -1) { L = top + 1; layerCount[L] = 0; layerSlots[L] = [false, false, false]; slot = 0; }
+  else { slot = layerSlots[top].indexOf(false); }
+  layerSlots[L][slot] = true; layerCount[L]++;
+
+  const p0 = rb.translation(), q0 = rb.rotation();
+  const sp = slotPos(L, slot);
+  stacking = {
+    b, L, slot, t: 0,
+    from: { x: p0.x, y: p0.y, z: p0.z }, fromQ: new THREE.Quaternion(q0.x, q0.y, q0.z, q0.w),
+    to: { x: sp.x, y: layerY(L) + 0.35, z: sp.z }, toQ: new THREE.Quaternion().copy(layerQuat(L)),
+    hoverY: layerY(L) + 3,
+  };
+  rb.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+  rb.setLinvel({ x: 0, y: 0, z: 0 }, true); rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  rb.layer = L; rb.slot = slot;
+}
+
+const ease = (x) => x * x * (3 - 2 * x);
+function stepStacking() {                       // 물리 한 칸마다 호출 — 블록을 부드럽게 위로 옮김
+  const s = stacking; if (!s) return;
+  s.t += DT;
+  const T1 = 0.8, T2 = 0.45;                    // 1단계: 위로 이동 / 2단계: 천천히 내려놓기
+  let x, y, z, q = tmpQ;
+  if (s.t < T1) {
+    const e = ease(s.t / T1);
+    x = s.from.x + (s.to.x - s.from.x) * e; z = s.from.z + (s.to.z - s.from.z) * e;
+    y = s.from.y + (s.hoverY - s.from.y) * e;
+    q.copy(s.fromQ).slerp(s.toQ, e);
+  } else if (s.t < T1 + T2) {
+    const e = ease((s.t - T1) / T2);
+    x = s.to.x; z = s.to.z; y = s.hoverY + (s.to.y - s.hoverY) * e; q.copy(s.toQ);
+  } else {                                      // 도착: 다시 일반 블록으로 만들어 툭 떨어뜨림
+    const rb = s.b.rb;
+    rb.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+    rb.setTranslation({ x: s.to.x, y: s.to.y, z: s.to.z }, true);
+    rb.setRotation({ x: s.toQ.x, y: s.toQ.y, z: s.toQ.z, w: s.toQ.w }, true);
+    rb.setLinvel({ x: 0, y: 0, z: 0 }, true); rb.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    stacking = null;
+    score++; scoreEl.textContent = String(score);
+    thud(0.55, 150);
+    return;
+  }
+  s.b.rb.setNextKinematicTranslation({ x, y, z });
+  s.b.rb.setNextKinematicRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
+}
+
+// ---------- 무너짐 감지 + 슬로모션 ----------
+function checkCollapse() {
+  if (state !== 'play') return;
+  let fallen = 0;
+  for (const b of blocks) {
+    if (drag && drag.rb === b.rb) continue;
+    if (stacking && stacking.b === b) continue;
+    const p = b.rb.translation();
+    if (p.y < layerY(b.rb.layer) - 1.0 || Math.hypot(p.x, p.z) > 4.8) fallen++;
+  }
+  if (fallen >= 3) {                            // 블록 3개 이상 제자리를 벗어나면 '무너짐'
+    if (drag) releaseDrag(false);
+    state = 'collapsing'; collapseAt = performance.now(); timeScale = 0.25;
+    if (navigator.vibrate) { try { navigator.vibrate([60, 40, 120]); } catch (e) {} }
+    for (let i = 0; i < 6; i++) setTimeout(() => thud(0.35 + Math.random() * 0.3, 90 + Math.random() * 90), i * 260 + Math.random() * 120);
+  }
+}
+
+function updateCollapse(dt) {
+  if (state !== 'collapsing') return;
+  cam.theta += dt * 0.18;                       // 무너지는 동안 카메라가 천천히 돈다 (영상 연출)
+  const el = (performance.now() - collapseAt) / 1000;
+  if (el > 2.4) timeScale = Math.min(1, timeScale + dt * 0.8);   // 슬로모션에서 서서히 정상속도로
+  if (el > 3.4) {
+    state = 'over';
+    if (score > best) { best = score; saveBest(); }
+    $('finalScore').textContent = String(score);
+    $('finalBest').textContent = 'Best: ' + best;
+    $('over').classList.remove('off');
+  }
+}
+
+// ---------- 버튼 ----------
+$('btnReset').onclick = () => { initAudio(); newGame(); };
+$('btnAgain').onclick = () => { initAudio(); newGame(); };
+$('btnHide').onclick = () => { hud.classList.add('hidden'); $('showUi').style.display = 'block'; toast('Tap the dot at the top right to bring the buttons back', 2500); };
+$('showUi').onclick = () => { hud.classList.remove('hidden'); $('showUi').style.display = 'none'; };
+
+// ---------- 메인 루프 ----------
+let last = performance.now(), acc = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  if (world && state !== 'loading') {
+    acc += dt * timeScale;
+    let n = 0;
+    while (acc >= DT && n < 8) {                 // 느린 폰에서도 멈추지 않게 한 프레임 최대 8번만 계산
+      applyDragForce();
+      stepStacking();
+      world.step();
+      acc -= DT; n++;
+    }
+    if (n === 8) acc = 0;
+    syncMeshes();
+    checkCollapse();
+    updateCollapse(dt);
+  }
+  updateCamera(dt);
+  renderer.render(scene, camera);
+}
+
+fitCamera();
+newGame();
+$('loadMsg').style.display = 'none';             // 로딩이 끝나면 PLAY 버튼 표시
+$('btnPlay').style.display = 'block';
+$('btnPlay').onclick = () => { initAudio(); $('loading').classList.add('off'); };
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
