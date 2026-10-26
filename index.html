@@ -225,11 +225,11 @@ const blockTextures = [
 // 광고주를 찾는 영어 문구 (문구를 바꾸고 싶으면 여기만 고치면 돼요)
 const AD_EMAIL = 'skadnrwhd@gmail.com';       // 광고 문의 메일
 const AD_LABELS = [
+  ['BE THE FIRST SPONSOR', 'SPONSORS: ' + AD_EMAIL],          // 광고주 모집
   ['YOUR AD HERE', 'SPONSORS: ' + AD_EMAIL],
-  ['ADVERTISE WITH US', 'SPONSORS: ' + AD_EMAIL],
+  ['NO SPONSOR YET', 'BE THE FIRST: ' + AD_EMAIL],
+  ['MORE FREE GAMES', 'TRY WATER RING TOSS'],                  // 내 다른 게임 홍보 (자체 광고)
   ['YOUR LOGO HERE', 'SPONSORS: ' + AD_EMAIL],
-  ['AD SPACE AVAILABLE', 'SPONSORS: ' + AD_EMAIL],
-  ['SPONSOR THIS BLOCK', 'SPONSORS: ' + AD_EMAIL],
 ];
 const adTextures = AD_LABELS.map((l, i) => makeWoodTexture(['#d9a869', '#cf9c5c', '#e0b274'][i % 3], 101 + i * 13, 512, 128, false, l));
 const tableTex = makeWoodTexture('#5a3b24', 91, 1024, 256, true);
