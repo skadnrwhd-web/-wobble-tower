@@ -27,12 +27,20 @@
     background: rgba(20,14,10,.55); color: #f3e6d3; font-size: 20px; backdrop-filter: blur(6px); }
   .btn:active { transform: scale(.92); }
 
+  /* ===== 화면 맨 아래 한 줄 (후원 + 광고 문의) ===== */
+  #foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; text-align: center;
+    padding: 8px 12px calc(env(safe-area-inset-bottom) + 8px); font-size: 12px; line-height: 1.3;
+    background: linear-gradient(to top, rgba(20,14,10,.75), rgba(20,14,10,0)); transition: opacity .3s; }
+  #foot.hidden { opacity: 0; pointer-events: none; }
+  #foot a { color: rgba(243,230,211,.85); text-decoration: none; padding: 6px 4px; display: inline-block; }
+  #foot .sep { opacity: .4; }
+
   /* UI를 숨겼을 때(영상 촬영용) 다시 켜는 작은 점 */
   #showUi { position: fixed; right: 10px; top: calc(env(safe-area-inset-top) + 10px); width: 36px; height: 36px;
     border-radius: 50%; border: none; background: rgba(255,255,255,.08); color: transparent; display: none; }
 
   /* ===== 안내 문구 ===== */
-  #toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 28px); transform: translateX(-50%);
+  #toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 58px); transform: translateX(-50%);
     background: rgba(20,14,10,.7); border: 1px solid rgba(255,220,170,.15); padding: 10px 16px; border-radius: 999px;
     font-size: 14px; opacity: 0; transition: opacity .35s; pointer-events: none; white-space: nowrap; }
   #toast.show { opacity: 1; }
@@ -70,6 +78,11 @@
     <button class="btn" id="btnHide" title="Hide buttons (for recording)">🎥</button>
     <button class="btn" id="btnReset" title="Restart">🔄</button>
   </div>
+</div>
+<div id="foot">
+  <a href="https://buymeacoffee.com/ujnam80" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+  <span class="sep">·</span>
+  <a href="mailto:skadnrwhd@gmail.com">Sponsors: skadnrwhd@gmail.com</a>
 </div>
 <button id="showUi" aria-label="Show buttons">·</button>
 <div id="toast"></div>
@@ -561,8 +574,8 @@ function updateCollapse(dt) {
 // ---------- 버튼 ----------
 $('btnReset').onclick = () => { initAudio(); newGame(); };
 $('btnAgain').onclick = () => { initAudio(); newGame(); };
-$('btnHide').onclick = () => { hud.classList.add('hidden'); $('showUi').style.display = 'block'; toast('Tap the dot at the top right to bring the buttons back', 2500); };
-$('showUi').onclick = () => { hud.classList.remove('hidden'); $('showUi').style.display = 'none'; };
+$('btnHide').onclick = () => { hud.classList.add('hidden'); $('foot').classList.add('hidden'); $('showUi').style.display = 'block'; toast('Tap the dot at the top right to bring the buttons back', 2500); };
+$('showUi').onclick = () => { hud.classList.remove('hidden'); $('foot').classList.remove('hidden'); $('showUi').style.display = 'none'; };
 
 // ---------- 메인 루프 ----------
 let last = performance.now(), acc = 0;
