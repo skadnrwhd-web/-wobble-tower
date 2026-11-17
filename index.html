@@ -568,6 +568,7 @@ function updateCollapse(dt) {
     $('finalScore').textContent = String(score);
     $('finalBest').textContent = 'Best: ' + best;
     $('over').classList.remove('off');
+    if (window.ArcadeRank) ArcadeRank.show({ id: 'wobble-tower', score: score, cancelIf: function () { return state !== 'over'; } });
   }
 }
 
@@ -607,5 +608,6 @@ $('btnPlay').style.display = 'block';
 $('btnPlay').onclick = () => { initAudio(); $('loading').classList.add('off'); };
 requestAnimationFrame(frame);
 </script>
+<script src="https://skadnrwhd-web.github.io/arcade/rank.js"></script>
 </body>
 </html>
